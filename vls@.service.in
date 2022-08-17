@@ -1,0 +1,9 @@
+[Unit]
+Description=Video Looped Server
+
+[Service]
+Type=simple
+ExecStart=@install_path@/vls --listening_address=0.0.0.0 %I
+
+[Install]
+WantedBy=multi-user.target

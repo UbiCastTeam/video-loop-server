@@ -18,15 +18,15 @@
  * Boston, MA 02110-1301, USA.
  */
 
+#include "vls_rtsp.h"
 
 #include <gst/gst.h>
-
 #include <gst/rtsp-server/rtsp-server.h>
 
-#include "test-replay-server.h"
+#include <ctype.h>
 
-GST_DEBUG_CATEGORY_STATIC (replay_server_debug);
-#define GST_CAT_DEFAULT (replay_server_debug)
+GST_DEBUG_CATEGORY_STATIC (rtsp_server_debug);
+#define GST_CAT_DEFAULT (rtsp_server_debug)
 
 static GstStaticCaps raw_video_caps = GST_STATIC_CAPS ("video/x-raw");
 static GstStaticCaps raw_audio_caps = GST_STATIC_CAPS ("audio/x-raw");
@@ -113,6 +113,9 @@ gst_replay_bin_class_init (GstReplayBinClass * klass)
   gobject_class->finalize = gst_replay_bin_finalize;
 
   bin_class->handle_message = GST_DEBUG_FUNCPTR (gst_replay_bin_handle_message);
+
+  GST_DEBUG_CATEGORY_INIT (rtsp_server_debug, "rtsp-server", 0,
+      "RTSP replay server");
 }
 
 static void
@@ -840,92 +843,82 @@ gst_rtsp_media_factory_replay_get_decoders (GstRTSPMediaFactoryReplay * factory)
 }
 
 static GstRTSPMediaFactory *
-gst_rtsp_media_factory_replay_new (const gchar * uri, gint64 num_loops)
+gst_rtsp_media_factory_replay_new (const gchar * uri, gint64 num_loops, gboolean shared)
 {
   GstRTSPMediaFactory *factory;
 
-  factory =
-      GST_RTSP_MEDIA_FACTORY (g_object_new
-      (GST_TYPE_RTSP_MEDIA_FACTORY_REPLAY, "uri", uri, "num-loops", num_loops,
-          NULL));
+  factory = GST_RTSP_MEDIA_FACTORY (g_object_new
+		  (GST_TYPE_RTSP_MEDIA_FACTORY_REPLAY, "uri", uri, "num-loops",
+		   num_loops, "shared", shared, NULL));
 
   return factory;
 }
 
-int
-main (int argc, char *argv[])
+static gchar *
+rtsp_slugify (const gchar * uri)
 {
-  GMainLoop *loop;
-  GstRTSPServer *server;
-  GstRTSPMountPoints *mounts;
-  GstRTSPMediaFactory *factory;
-  GOptionContext *optctx;
-  GError *error = NULL;
-  gchar *service;
-  gchar *uri = NULL;
-  gint64 num_loops = -1;
-  GOptionEntry options[] = {
-    {"num-loops", 0, 0, G_OPTION_ARG_INT64, &num_loops,
-        "The number of loops (default = -1, infinite)", NULL},
-    {NULL}
-  };
+	gchar *rtsp_slug, *basename, *location, *tmp;
 
-  optctx = g_option_context_new ("RTSP Replay Server");
-  g_option_context_add_main_entries (optctx, options, NULL);
-  g_option_context_add_group (optctx, gst_init_get_option_group ());
-  if (!g_option_context_parse (optctx, &argc, &argv, &error)) {
-    g_printerr ("Error parsing options: %s\n", error->message);
-    g_option_context_free (optctx);
-    g_clear_error (&error);
-    return -1;
-  }
-  if (argc < 2) {
-    g_print ("%s\n", g_option_context_get_help (optctx, TRUE, NULL));
-    return 1;
-  }
+	location = gst_uri_get_location (uri);
+	basename = g_path_get_basename (location);
+	g_free (location);
 
-  g_option_context_free (optctx);
+	rtsp_slug = tmp = g_strconcat ("/", basename, NULL);
+	g_free (basename);
 
-  /* check if URI is valid, otherwise convert filename to URI if it's a file */
-  if (gst_uri_is_valid (argv[1])) {
-    uri = g_strdup (argv[1]);
-  } else if (g_file_test (argv[1], G_FILE_TEST_EXISTS)) {
-    uri = gst_filename_to_uri (argv[1], NULL);
-  } else {
-    g_printerr ("Unrecognised command line argument '%s'.\n"
-        "Please pass an URI or file as argument!\n", argv[1]);
-    return -1;
-  }
-
-  if (num_loops < -1 || num_loops == 0) {
-    g_printerr ("num-loop should be non-zero or -1");
-    return -1;
-  }
-
-  GST_DEBUG_CATEGORY_INIT (replay_server_debug, "replay-server", 0,
-      "RTSP replay server");
-
-  if (num_loops != -1)
-    g_print ("Run loop %" G_GINT64_FORMAT " times\n", num_loops);
-
-  loop = g_main_loop_new (NULL, FALSE);
-
-  server = gst_rtsp_server_new ();
-
-  mounts = gst_rtsp_server_get_mount_points (server);
-  factory = gst_rtsp_media_factory_replay_new (uri, num_loops);
-  g_free (uri);
-
-  gst_rtsp_mount_points_add_factory (mounts, "/test", factory);
-
-  g_object_unref (mounts);
-
-  gst_rtsp_server_attach (server, NULL);
-
-  service = gst_rtsp_server_get_service (server);
-  g_print ("stream ready at rtsp://127.0.0.1:%s/test\n", service);
-  g_free (service);
-  g_main_loop_run (loop);
-
-  return 0;
+	// skip the first '/'
+	tmp++;
+	while (*tmp) {
+		if (!(isalpha (*tmp) || isdigit(*tmp))) {
+			*tmp = '-';
+		}
+		tmp++;
+	}
+	return rtsp_slug;
 }
+
+GstRTSPServer *
+vls_rtsp_serve (GSList *media_uri_list, gboolean shared, gint
+		rtsp_port, const gchar *listening_address)
+{
+	GSList *walk;
+	GstRTSPServer *server = NULL;
+	GstRTSPMountPoints *mounts;
+	GData *datalist = NULL;
+	gchar *service = g_strdup_printf ("%d", rtsp_port);
+
+	server = gst_rtsp_server_new ();
+	g_object_set (server, "address", listening_address, "service", service,
+			NULL);
+	g_free (service);
+	mounts = gst_rtsp_server_get_mount_points (server);
+
+	g_datalist_init (&datalist);
+	for (walk = media_uri_list; walk; walk = g_slist_next (walk)) {
+		GstRTSPMediaFactory *factory;
+		gchar *uri = walk->data;
+		gchar *rtsp_slug, *rtsp_uri;
+
+		// -1 is for loop replay
+		factory = gst_rtsp_media_factory_replay_new (uri, -1, shared);
+
+		rtsp_slug = rtsp_slugify (uri);
+
+		rtsp_uri = g_strdup_printf ("rtsp://%s:%d%s", listening_address,
+				rtsp_port, rtsp_slug);
+
+		gst_rtsp_mount_points_add_factory (mounts, rtsp_slug, factory);
+		g_datalist_set_data_full (&datalist, uri, rtsp_uri, g_free);  // uri will be convert ot quark
+		g_free (rtsp_slug);
+		g_free (uri);
+	}
+
+	g_object_unref (mounts);
+
+	g_object_set_data (G_OBJECT (server), "server_mapping", datalist);
+	if (!gst_rtsp_server_attach (server, NULL))
+		g_clear_object (&server);
+
+	return server;
+}
+

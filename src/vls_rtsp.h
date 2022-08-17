@@ -33,5 +33,8 @@ G_DECLARE_FINAL_TYPE (GstRTSPMediaFactoryReplay,
     gst_rtsp_media_factory_replay, GST, RTSP_MEDIA_FACTORY_REPLAY,
     GstRTSPMediaFactory);
 
+GstRTSPServer * vls_rtsp_serve (GSList *media_uri_list, gboolean shared,
+		gint rtsp_port, const gchar *listening_address);
+
 G_END_DECLS
 
