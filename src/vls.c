@@ -177,6 +177,7 @@ main (int argc, char *argv[])
 
   // install signal handler
   g_unix_signal_add (SIGINT, (GSourceFunc) intr_handler, loop);
+  g_unix_signal_add (SIGTERM, (GSourceFunc) intr_handler, loop);
 
   g_main_loop_run (loop);
 
