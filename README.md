@@ -1,13 +1,13 @@
 # Video Loop Server (aka VLS)
 
-This project aims to provides a simple to use video streaming application
-capable of streaming multiple video in loop with IP protocol
+This project provides a simple to use video streaming application
+capable of streaming multiple videos in a seamless loop in order
+to simulate e.g. IP cameras.
 
 It is not a production ready server but rather use for development.
 
-Current supported protocol are
-
-* RTSP (thanks to gst-rtsp-server)
+Supported protocols:
+* RTSP (gst-rtsp-server)
 
 ## Building
 
@@ -33,6 +33,8 @@ You can then install it
 sudo meson install -C build
 ```
 
+The binary will be installed under /usr/local/bin/vls
+
 ### Docker
 
 With Docker you can run the VLS without having to install it on you system, see
@@ -56,17 +58,33 @@ To see all available options check `vls --help`
 To install or run it as a systemd service you can use the following command:
 
 ```
-sudo systemctl enable vls@$(systemd-escape /path/to/media/folder).service
-sudo systemctl start vls@$(systemd-escape /path/to/media/folder).service
+sudo systemctl enable vls@$(systemd-escape /path/to/media/folder).service --now
 ```
 
 Note: as we cannot pass `/` as instance name, we use `systemd-escape` to escape
-them.
+them. This is not supported on the systemd version included in Debian 11, so on old
+systems copy the provided vls.service.example to /etc/systemd/system/
+
+```
+sudo copy vls.service.example /etc/systemd/system/vls.service
+[EDIT THE /etc/systemd/system/vls.service FILE TO ADJUST THE PATHS]
+sudo systemctl daemon-reload
+sudo systemctl enable --now vls.service
+```
 
 Note 2: when started with systemd you can see the media resource URI with
 
 ```
 systemctl status vls@$(systemd-escape /path/to/media/folder).service
+Aug 19 17:38:56 myserver systemd[1]: Started Video Looped Server.
+Aug 19 17:38:56 myserver vls[20799]: serving 2 media
+Aug 19 17:38:56 myserver vls[20799]: RTSP stream ready at rtsp://0.0.0.0:8554/cam1-mp4
+Aug 19 17:38:56 myserver vls[20799]: RTSP stream ready at rtsp://0.0.0.0:8554/cam2-mp4
+```
+
+If you add new videos you must reload the service with
+```
+systemctl restart vls.service
 ```
 
 ### Docker
