@@ -887,6 +887,15 @@ vls_rtsp_serve (GSList *media_uri_list, gboolean shared, gint
 	GData *datalist = NULL;
 	gchar *service = g_strdup_printf ("%d", rtsp_port);
 
+	// Counter hack: see compare_rank() in gst-rtsp-server/gst/rtsp-sink/gstrtspclientsink.c
+	// increase rtpmp4gpay rank so that it beats rtpmp4apay
+	{
+		GstPluginFeature *feature;
+		feature = gst_registry_find_feature (gst_registry_get (), "rtpmp4gpay",
+				GST_TYPE_ELEMENT_FACTORY);
+		gst_plugin_feature_set_rank (feature, GST_RANK_PRIMARY);
+	}
+
 	server = gst_rtsp_server_new ();
 	g_object_set (server, "address", listening_address, "service", service,
 			NULL);
