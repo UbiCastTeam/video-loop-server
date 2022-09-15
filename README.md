@@ -103,3 +103,7 @@ This command will launch the VLS server and display the video resource
 available.
 
 Ex: rtsp://0.0.0.0:8554/[slug-of-media-basename]
+
+## Preparing videos
+
+Refer to the `convert.sh` script
